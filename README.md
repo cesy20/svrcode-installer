@@ -37,11 +37,14 @@ menu
 svrcode
 ```
 
-## 👤 Abrir menú SSH Token / clientes SSH
+## 🧩 Uso desde el menú principal
 
-```bash
-svrcode-ssh-token
+```text
+[01] MAIN SSH    = clientes SSH, límite IP, renovar, bloquear, eliminar
+[02] MAIN TOKEN  = menú principal Token Manager
 ```
+
+> Ya no es necesario usar comandos separados para entrar al menú Token; se accede desde `menu` → `[02] MAIN TOKEN`.
 
 ## ✅ Verificar después de instalar
 

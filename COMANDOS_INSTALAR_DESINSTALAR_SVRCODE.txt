@@ -38,7 +38,7 @@ menu
 
 svrcode
 
-svrcode-ssh-token
+menu  # luego [01] MAIN SSH
 
 ============================================================
  5) VERIFICACIÓN DESPUÉS DE INSTALAR
