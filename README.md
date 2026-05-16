@@ -113,3 +113,8 @@ UDP Custom / Boost UDP: UDP 7100-7600
 ```
 
 > Los puertos internos no deben mostrarse como principales al cliente.
+
+## Corrección incluida
+
+- MAIN SSH muestra la lista de usuarios antes de seleccionar en detalle, renovar, límite IP, bloquear, activar/desbloquear y eliminar.
+- Se puede seleccionar por número o escribir el nombre del usuario.
