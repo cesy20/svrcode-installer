@@ -1,12 +1,18 @@
-# SVRCODE FULL NETVPN MANAGER V1
+# SVRCODE FULL NETVPN MANAGER V2
 
-Instalador único completo de SVRCODE con NETVPN Manager integrado.
+Instalador completo con protocolos originales intactos y NETVPN Manager corregido.
 
-Mantiene los protocolos originales y reemplaza el Token Manager viejo por el nuevo NETVPN Manager.
+## Instalar desde ZIP
 
-## Instalar
+```bash
+cd /root
+unzip -o SVRCODE_FULL_NETVPN_MANAGER_V2.zip
+cd svrcode-installer-main
+chmod +x instalar.sh
+sudo bash instalar.sh
+```
 
-Ejecuta en la VPS como root:
+## Instalar desde GitHub
 
 ```bash
 cd /root && apt update -y && apt install -y wget curl unzip git sudo && wget -O instalar.sh https://raw.githubusercontent.com/cesy20/svrcode-installer/main/instalar.sh && chmod +x instalar.sh && bash instalar.sh
@@ -14,50 +20,21 @@ cd /root && apt update -y && apt install -y wget curl unzip git sudo && wget -O 
 
 ## Desinstalar
 
-Ejecuta en la VPS como root:
-
 ```bash
 cd /root && apt update -y && apt install -y wget curl unzip git sudo && wget -O desinstalar_svrcode.sh https://raw.githubusercontent.com/cesy20/svrcode-installer/main/desinstalar_svrcode.sh && chmod +x desinstalar_svrcode.sh && bash desinstalar_svrcode.sh
 ```
 
-## Menú después de instalar
+## V2 corrige
 
-Menú principal:
+- NETVPN Manager ya no falla si `/usr/local/bin/svrnetvpn` ya existe.
+- Si el puerto 5000 está ocupado por el manager viejo/nuevo, lo reinicia y actualiza ahí mismo.
+- No toca HAProxy, multiport ni protocolos funcionando.
+
+## Menús
 
 ```bash
 menu
-```
-
-o:
-
-```bash
 admin
-```
-
-NETVPN Manager:
-
-```bash
 sudo svrnetvpn menu
-```
-
-Alias compatible:
-
-```bash
 sudo svrtoken menu
 ```
-
-## Nota
-
-El repo correcto es:
-
-```text
-cesy20/svrcode-installer
-```
-
-No usar:
-
-```text
-cesy20/svrcc
-```
-
-porque ese enlace da error 404 si ese repo no existe.
