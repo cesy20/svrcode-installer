@@ -1,0 +1,125 @@
+COMANDOS - SVRCODE FULL NETVPN MANAGER V1
+==================================================
+
+INSTALACIÓN NORMAL EN VPS LIMPIA
+--------------------------------
+1) Subir el ZIP a la VPS.
+2) Descomprimir:
+
+   unzip SVRCODE_FULL_NETVPN_MANAGER_V1.zip
+
+3) Entrar a la carpeta:
+
+   cd svrcode-installer-main
+
+4) Dar permiso:
+
+   chmod +x instalar.sh desinstalar_svrcode.sh instalar_desde_github.sh
+
+5) Instalar:
+
+   sudo bash instalar.sh
+
+
+INSTALACIÓN EN UNA SOLA LÍNEA SI YA ESTÁS EN LA CARPETA DEL ZIP
+----------------------------------------------------------------
+
+   unzip -o SVRCODE_FULL_NETVPN_MANAGER_V1.zip && cd svrcode-installer-main && chmod +x *.sh && sudo bash instalar.sh
+
+
+COMANDOS PRINCIPALES DESPUÉS DE INSTALAR
+----------------------------------------
+
+Menú principal SVRCODE:
+
+   admin
+   menu
+   svrcode
+
+Nuevo manager NETVPN:
+
+   sudo svrnetvpn menu
+   sudo svrnetvpn status
+   sudo svrnetvpn api-config
+
+Alias compatible del viejo token manager, pero apuntando al nuevo:
+
+   sudo svrtoken menu
+
+
+CREAR TOKEN VIP
+---------------
+
+   sudo svrnetvpn add cliente1 all 30 1
+
+Formato:
+
+   sudo svrnetvpn add NOMBRE PROTO DIAS MAX_DISPOSITIVOS [TOKEN_PERSONALIZADO]
+
+Ejemplos:
+
+   sudo svrnetvpn add juan all 30 1
+   sudo svrnetvpn add maria ssh 15 1
+   sudo svrnetvpn add clientevip singbox 30 1 MITOKEN123
+
+
+VER TOKENS / ONLINE
+-------------------
+
+   sudo svrnetvpn list
+   sudo svrnetvpn online
+   sudo svrnetvpn check-user TOKEN [HWID]
+
+
+FREE
+----
+
+   sudo svrnetvpn free on
+   sudo svrnetvpn free off
+   sudo svrnetvpn free status
+
+
+GIT FREE/VIP
+------------
+
+   sudo svrnetvpn git-config usuario/REPO main FreeMode/Config.json VipMode/Config.mvgl.json TOKEN_GITHUB_OPCIONAL
+   sudo svrnetvpn git-sync
+
+
+LOGS
+----
+
+   sudo svrnetvpn logs 100
+   sudo svrnetvpn auth-logs 100
+
+
+DESINSTALAR MANAGER NETVPN SIN BORRAR DATOS
+-------------------------------------------
+
+   sudo svrnetvpn uninstall
+
+
+DESINSTALAR SVRCODE COMPLETO
+----------------------------
+
+   cd svrcode-installer-main
+   sudo bash desinstalar_svrcode.sh
+
+
+FORMATO PARA APP NUEVA
+----------------------
+
+Usuario SSH interno:
+
+   svrgate
+
+Ticket FREE como contraseña:
+
+   free:<auth>:<HWID>[:proto]
+
+Ticket VIP como contraseña:
+
+   vip:<auth>:<TOKEN>:<HWID>[:proto]
+
+El GEN no debe mandar ServerUser ni ServerPass.
+La APK nueva no debe llevar ADMIN_KEY ni APP_KEY fijo.
