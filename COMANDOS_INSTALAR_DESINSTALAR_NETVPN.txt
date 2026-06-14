@@ -1,195 +1,43 @@
-============================================================
- NETVPN AUTH LOGIN + SVRCODE PROTOCOLOS - COMANDOS V4
-============================================================
+==============================
+NETVPN V5 - COMANDOS
+==============================
 
-Este paquete corrige:
-- El AUTH ya NO queda fijo. El instalador pregunta el AUTH real de cada VPS.
-- El API token viejo svrtoken/svrcode-token-api ya no se usa para la app nueva.
-- Si el puerto 5000 está ocupado por API token viejo, se apaga y se reemplaza por netvpn-auth-status-api.
-- FREE tiene ON/OFF desde netvpn-vip.
-- Los tokens VIP se crean sin HWID por defecto y se vinculan al primer uso real.
-- svrtoken queda como acceso al gestor correcto netvpn-vip.
-
-ARCHIVOS:
-- instalar.sh
-- svrcode-installerFULL_original.zip
-- APP_NETVPN_V28_FIX_UPDATE_ADS_REWARD_CRASH_AUTH_LOGIN_GEN_INTACTO.zip
-- COMANDOS_ORIGINAL_SVRCODE.txt
-- README.txt
-
-============================================================
- 1) INSTALACIÓN COMPLETA EN VPS LIMPIA
-============================================================
+INSTALAR TODO EN UNA SOLA INSTALACION:
 
 cd /root
 apt update -y && apt install -y unzip curl wget sudo
-unzip NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000.zip
-cd NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000
+unzip NETVPN_FULL_UNICO_COMPLETO_V5_AUTO_FULL_NO_MENU.zip
+cd NETVPN_FULL_UNICO_COMPLETO_V5_AUTO_FULL_NO_MENU
 chmod +x instalar.sh
-INSTALL_MODE=full bash instalar.sh
+bash instalar.sh
 
-El instalador preguntará:
-Escribe AUTH de esta VPS
+IMPORTANTE:
+Cuando pregunte AUTH/dominio, escribe el dominio real de esa VPS.
+Ejemplo:
+api.midominio.com
 
-Pon el dominio/auth propio de ESTA VPS, ejemplo:
-api.mi-vps-nueva.com
+El mismo AUTH debe ir en el GEN del servidor.
 
-============================================================
- 2) SOLO AUTH LOGIN EN VPS QUE YA TIENE PROTOCOLOS
-============================================================
-
-cd /root
-unzip NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000.zip
-cd NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000
-chmod +x instalar.sh
-INSTALL_MODE=auth bash instalar.sh
-
-============================================================
- 3) MODO AUTOMÁTICO OPCIONAL
-============================================================
-
-AUTH_MAIN="api.mi-vps-nueva.com" INSTALL_MODE=full bash instalar.sh
-AUTH_MAIN="api.mi-vps-nueva.com" INSTALL_MODE=auth bash instalar.sh
-
-============================================================
- 4) VERIFICAR AUTH CONFIGURADO
-============================================================
-
+VERIFICAR:
 cat /etc/netvpn-auth-login.conf
 curl -s http://127.0.0.1:5000/health
+ss -ltnp | grep -E ':80|:7789|:2290|:5000'
 
-Debe mostrar:
-service: netvpn-auth-status-api
-auth: TU_AUTH_REAL
-
-No debe mostrar:
-service: svrcode-token-api
-
-============================================================
- 5) GESTOR CORRECTO DE TOKENS
-============================================================
-
-Abrir menú:
+TOKEN MANAGER CORRECTO:
 netvpn-vip menu
-
-También funciona:
-svrtoken
-
-Pero svrtoken ya solo redirige al gestor correcto netvpn-vip.
-
-============================================================
- 6) ENCENDER / APAGAR FREE
-============================================================
-
-netvpn-vip free-off
-netvpn-vip free-on
-netvpn-vip status
-
-Comprobar FREE:
-curl -s 'http://127.0.0.1:5000/checkUser?mode=free'
-
-============================================================
- 7) CREAR TOKEN VIP
-============================================================
-
-Por días, recomendado:
-netvpn-vip add 5929f2eb39a24822 15 "chifladito"
-
-Por fecha exacta:
-netvpn-vip add 5929f2eb39a24822 2026-12-31 "chifladito"
-
-El token queda con HWID vacío y se vincula al primer celular real que lo use.
-
-============================================================
- 8) LISTAR / BLOQUEAR / ACTIVAR / BORRAR TOKEN
-============================================================
-
 netvpn-vip list
-netvpn-vip block TOKEN
-netvpn-vip active TOKEN
-netvpn-vip del TOKEN
-
-Vincular manualmente:
-netvpn-vip bind TOKEN HWID
-
-Resetear HWID para que se vincule de nuevo al primer uso:
-netvpn-vip reset TOKEN
-
-============================================================
- 9) PROBAR VIP EN API 5000
-============================================================
-
-curl -s -X POST http://127.0.0.1:5000/checkUser \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"vip","token":"5929f2eb39a24822","hwid":"TESTHWID","proto":"ssh"}'
-
-Debe devolver:
-ok:true
-cliente
-expires_text
-days_left
-
-============================================================
- 10) PROBAR FREE DIRECTO BACKEND 2290
-============================================================
-
-AUTH_MAIN="api.mi-vps-nueva.com"
-NVP_USER="$(python3 - <<PY
-import hashlib
-print('nvp_' + hashlib.sha256('$AUTH_MAIN'.encode()).hexdigest()[:12])
-PY
-)"
-TEST_PASS="NVP1|free|$AUTH_MAIN|TESTHWID|ssh"
-sshpass -p "$TEST_PASS" ssh \
-  -o StrictHostKeyChecking=no \
-  -o UserKnownHostsFile=/dev/null \
-  -o PreferredAuthentications=password,keyboard-interactive \
-  -o PubkeyAuthentication=no \
-  -p 2290 "$NVP_USER@127.0.0.1" 'echo OK_FREE_AUTH_LOGIN'
-
-============================================================
- 11) VER PUERTOS
-============================================================
-
-ss -ltnp | grep -E ':(80|8080|443|8443|7789|2290|5000|90)'
-
-Flujo:
-App puerto 80 -> bridge 7789 -> OpenSSH 2290 -> PAM AUTH LOGIN
-
-============================================================
- 12) REINICIAR SERVICIOS
-============================================================
-
-systemctl restart ssh
-systemctl restart svrcode-ssh-payload.service
-systemctl restart netvpn-auth-status-api.service
-
-============================================================
- 13) LOGS
-============================================================
-
-tail -f /var/log/netvpn-auth-login.log
-journalctl -u netvpn-auth-status-api.service -f
-journalctl -u svrcode-ssh-payload.service -f
-
-============================================================
- 14) REVERTIR AUTH LOGIN
-============================================================
-
-bash /root/REVERT_NETVPN_AUTH_LOGIN.sh
-
-============================================================
- 15) CONFIG EN GEN / APP
-============================================================
-
-Puerto público: 80
-Auth: el mismo dominio que escribiste durante la instalación
-Payload: el mismo de siempre
+netvpn-vip add 5929f2eb39a24822 15 "chifladito"
+netvpn-vip block 5929f2eb39a24822
+netvpn-vip active 5929f2eb39a24822
+netvpn-vip del 5929f2eb39a24822
 
 FREE:
-user = nvp_<hash auth>
-pass = NVP1|free|AUTH|HWID|ssh
+netvpn-vip free-off
+netvpn-vip free-on
 
-VIP:
-user = nvp_<hash auth>
-pass = NVP1|vip|AUTH|TOKEN|HWID|ssh
+REVERTIR AUTH LOGIN:
+bash /root/REVERT_NETVPN_AUTH_LOGIN.sh
+
+DESINSTALAR SVRCODE ORIGINAL:
+Buscar el desinstalador creado por los protocolos originales, normalmente:
+bash /root/svrcode-installer/desinstalar_svrcode.sh

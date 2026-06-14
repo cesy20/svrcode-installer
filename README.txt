@@ -1,20 +1,28 @@
-NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000
+NETVPN FULL UNICO COMPLETO V5
 
-Paquete completo con:
-- Instalador único instalar.sh
-- Protocolos base SVRCODE originales
-- App V28 incluida
-- NETVPN AUTH LOGIN SSH
-- API 5000 nueva: netvpn-auth-status-api
-- Gestor correcto: netvpn-vip
-- FREE ON/OFF
-- Tokens VIP con vinculación automática al primer HWID
+CAMBIO PRINCIPAL:
+- instalar.sh ya NO muestra menu.
+- Instala todo en una sola corrida: protocolos base + NETVPN AUTH LOGIN + netvpn-vip + API 5000.
+- Pregunta el AUTH/dominio real de esa VPS durante la instalacion.
+- Incluye el instalador de protocolos embebido dentro de instalar.sh y tambien como ZIP externo.
 
-Instalación VPS limpia:
-INSTALL_MODE=full bash instalar.sh
+INSTALAR EN VPS LIMPIA:
+cd /root
+apt update -y && apt install -y unzip curl wget sudo
+unzip NETVPN_FULL_UNICO_COMPLETO_V5_AUTO_FULL_NO_MENU.zip
+cd NETVPN_FULL_UNICO_COMPLETO_V5_AUTO_FULL_NO_MENU
+chmod +x instalar.sh
+bash instalar.sh
 
-VPS con protocolos:
-INSTALL_MODE=auth bash instalar.sh
+Cuando pregunte AUTH, escribe el dominio/auth de ESA VPS.
+Ese mismo AUTH debe ir en el GEN del servidor.
 
-El instalador pregunta el AUTH real de cada VPS.
-No queda fijo api.tvchifladito.store.
+COMANDOS DESPUES:
+netvpn-vip menu
+netvpn-vip free-off
+netvpn-vip free-on
+netvpn-vip add TOKEN 15 "Cliente"
+netvpn-vip list
+
+REVERTIR:
+bash /root/REVERT_NETVPN_AUTH_LOGIN.sh
