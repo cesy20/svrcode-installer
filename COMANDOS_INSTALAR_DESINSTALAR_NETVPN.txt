@@ -1,122 +1,127 @@
 ============================================================
- NETVPN AUTH LOGIN + SVRCODE PROTOCOLOS - COMANDOS EJECUTABLES
+ NETVPN AUTH LOGIN + SVRCODE PROTOCOLOS - COMANDOS V4
 ============================================================
 
-Este paquete trae:
-- instalar.sh                         = instalador unico completo
-- svrcode-installerFULL_original.zip  = instalador original de protocolos SVRCODE
-- APP_NETVPN_V27_*.zip                = app estable actual
-- COMANDOS_ORIGINAL_SVRCODE.txt       = comandos originales de SVRCODE
+Este paquete corrige:
+- El AUTH ya NO queda fijo. El instalador pregunta el AUTH real de cada VPS.
+- El API token viejo svrtoken/svrcode-token-api ya no se usa para la app nueva.
+- Si el puerto 5000 está ocupado por API token viejo, se apaga y se reemplaza por netvpn-auth-status-api.
+- FREE tiene ON/OFF desde netvpn-vip.
+- Los tokens VIP se crean sin HWID por defecto y se vinculan al primer uso real.
+- svrtoken queda como acceso al gestor correcto netvpn-vip.
 
-IMPORTANTE:
-AUTH_MAIN debe ser el mismo AUTH que pones en el GEN/servidor.
-Ejemplo actual:
-api.tvchifladito.store
-
-============================================================
- 1) INSTALACION COMPLETA EN VPS LIMPIA
-============================================================
-
-cd /root
-apt update -y && apt install -y unzip curl wget sudo
-unzip NETVPN_FULL_UNICO_COMPLETO_V2.zip
-cd NETVPN_FULL_UNICO_COMPLETO_V2
-chmod +x instalar.sh
-AUTH_MAIN="api.tvchifladito.store" INSTALL_MODE=full bash instalar.sh
+ARCHIVOS:
+- instalar.sh
+- svrcode-installerFULL_original.zip
+- APP_NETVPN_V28_FIX_UPDATE_ADS_REWARD_CRASH_AUTH_LOGIN_GEN_INTACTO.zip
+- COMANDOS_ORIGINAL_SVRCODE.txt
+- README.txt
 
 ============================================================
- 2) INSTALACION AUTH LOGIN EN VPS QUE YA TIENE PROTOCOLOS
+ 1) INSTALACIÓN COMPLETA EN VPS LIMPIA
 ============================================================
 
 cd /root
 apt update -y && apt install -y unzip curl wget sudo
-unzip NETVPN_FULL_UNICO_COMPLETO_V2.zip
-cd NETVPN_FULL_UNICO_COMPLETO_V2
+unzip NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000.zip
+cd NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000
 chmod +x instalar.sh
-AUTH_MAIN="api.tvchifladito.store" INSTALL_MODE=auth bash instalar.sh
+INSTALL_MODE=full bash instalar.sh
+
+El instalador preguntará:
+Escribe AUTH de esta VPS
+
+Pon el dominio/auth propio de ESTA VPS, ejemplo:
+api.mi-vps-nueva.com
 
 ============================================================
- 3) ABRIR MENU DEL INSTALADOR
+ 2) SOLO AUTH LOGIN EN VPS QUE YA TIENE PROTOCOLOS
 ============================================================
 
-cd /root/NETVPN_FULL_UNICO_COMPLETO_V2
+cd /root
+unzip NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000.zip
+cd NETVPN_FULL_UNICO_COMPLETO_V4_AUTH_DINAMICO_FREE_5000
 chmod +x instalar.sh
-AUTH_MAIN="api.tvchifladito.store" bash instalar.sh
+INSTALL_MODE=auth bash instalar.sh
 
 ============================================================
- 4) ABRIR MENUS ORIGINALES DESPUES DE INSTALAR
+ 3) MODO AUTOMÁTICO OPCIONAL
 ============================================================
 
-menu
-svrcode
-menu  # luego [01] MAIN SSH
+AUTH_MAIN="api.mi-vps-nueva.com" INSTALL_MODE=full bash instalar.sh
+AUTH_MAIN="api.mi-vps-nueva.com" INSTALL_MODE=auth bash instalar.sh
 
 ============================================================
- 5) VERIFICACION DESPUES DE INSTALAR
+ 4) VERIFICAR AUTH CONFIGURADO
 ============================================================
 
-svrcode-test
-svrcode-udp-info
-haproxy -c -f /etc/haproxy/haproxy.cfg
-systemctl status haproxy svrcode-ssh-payload dropbear xray sing-box hysteria-server svrcode-dnstt svrcode-udpgw-boost svrcode-ssh-limitd netvpn-auth-status-api --no-pager -l
+cat /etc/netvpn-auth-login.conf
+curl -s http://127.0.0.1:5000/health
+
+Debe mostrar:
+service: netvpn-auth-status-api
+auth: TU_AUTH_REAL
+
+No debe mostrar:
+service: svrcode-token-api
 
 ============================================================
- 6) VER PUERTOS IMPORTANTES
+ 5) GESTOR CORRECTO DE TOKENS
 ============================================================
 
-ss -ltnup | grep -E ':(80|8080|443|8443|53|5666|7100|7200|7300|7400|7500|7600|7789|90|2290|5000|2096|2097|10090|10091|10092)'
+Abrir menú:
+netvpn-vip menu
+
+También funciona:
+svrtoken
+
+Pero svrtoken ya solo redirige al gestor correcto netvpn-vip.
 
 ============================================================
- 7) REINICIAR SERVICIOS PRINCIPALES
+ 6) ENCENDER / APAGAR FREE
 ============================================================
 
-systemctl restart haproxy svrcode-ssh-payload dropbear ssh xray sing-box nginx stunnel4 hysteria-server svrcode-dnstt svrcode-udpgw-boost svrcode-ssh-limitd netvpn-auth-status-api
+netvpn-vip free-off
+netvpn-vip free-on
+netvpn-vip status
+
+Comprobar FREE:
+curl -s 'http://127.0.0.1:5000/checkUser?mode=free'
 
 ============================================================
- 8) FLUJO QUE DEJA INSTALADO
+ 7) CREAR TOKEN VIP
 ============================================================
 
-App puerto 80
-  -> HAProxy / Payload
-  -> Bridge 127.0.0.1:7789
-  -> OpenSSH 127.0.0.1:2290
-  -> PAM NETVPN AUTH LOGIN
-  -> FREE/VIP validado en login SSH
+Por días, recomendado:
+netvpn-vip add 5929f2eb39a24822 15 "chifladito"
 
-API VIP datos:
-http://TU_AUTH:5000/checkUser
+Por fecha exacta:
+netvpn-vip add 5929f2eb39a24822 2026-12-31 "chifladito"
+
+El token queda con HWID vacío y se vincula al primer celular real que lo use.
 
 ============================================================
- 9) CREAR TOKEN VIP
-============================================================
-
-netvpn-vip add TOKEN 2026-12-31 "Cliente VIP" '*'
-
-Ejemplo:
-netvpn-vip add cca7bb236bbedc40 2026-12-31 "Cliente VIP" '*'
-
-============================================================
- 10) LISTAR TOKENS VIP
+ 8) LISTAR / BLOQUEAR / ACTIVAR / BORRAR TOKEN
 ============================================================
 
 netvpn-vip list
-cat /etc/netvpn-vip.tokens
-
-============================================================
- 11) BLOQUEAR / ACTIVAR / BORRAR TOKEN
-============================================================
-
 netvpn-vip block TOKEN
 netvpn-vip active TOKEN
 netvpn-vip del TOKEN
 
+Vincular manualmente:
+netvpn-vip bind TOKEN HWID
+
+Resetear HWID para que se vincule de nuevo al primer uso:
+netvpn-vip reset TOKEN
+
 ============================================================
- 12) PROBAR VIP EN API 5000
+ 9) PROBAR VIP EN API 5000
 ============================================================
 
 curl -s -X POST http://127.0.0.1:5000/checkUser \
   -H 'Content-Type: application/json' \
-  -d '{"mode":"vip","token":"cca7bb236bbedc40","hwid":"TESTHWID","proto":"ssh"}'
+  -d '{"mode":"vip","token":"5929f2eb39a24822","hwid":"TESTHWID","proto":"ssh"}'
 
 Debe devolver:
 ok:true
@@ -125,10 +130,10 @@ expires_text
 days_left
 
 ============================================================
- 13) PROBAR FREE DIRECTO EN BACKEND 2290
+ 10) PROBAR FREE DIRECTO BACKEND 2290
 ============================================================
 
-AUTH_MAIN="api.tvchifladito.store"
+AUTH_MAIN="api.mi-vps-nueva.com"
 NVP_USER="$(python3 - <<PY
 import hashlib
 print('nvp_' + hashlib.sha256('$AUTH_MAIN'.encode()).hexdigest()[:12])
@@ -143,26 +148,24 @@ sshpass -p "$TEST_PASS" ssh \
   -p 2290 "$NVP_USER@127.0.0.1" 'echo OK_FREE_AUTH_LOGIN'
 
 ============================================================
- 14) PROBAR VIP DIRECTO EN BACKEND 2290
+ 11) VER PUERTOS
 ============================================================
 
-AUTH_MAIN="api.tvchifladito.store"
-VIP_TOKEN="cca7bb236bbedc40"
-NVP_USER="$(python3 - <<PY
-import hashlib
-print('nvp_' + hashlib.sha256('$AUTH_MAIN'.encode()).hexdigest()[:12])
-PY
-)"
-VIP_PASS="NVP1|vip|$AUTH_MAIN|$VIP_TOKEN|TESTHWID|ssh"
-sshpass -p "$VIP_PASS" ssh \
-  -o StrictHostKeyChecking=no \
-  -o UserKnownHostsFile=/dev/null \
-  -o PreferredAuthentications=password,keyboard-interactive \
-  -o PubkeyAuthentication=no \
-  -p 2290 "$NVP_USER@127.0.0.1" 'echo OK_VIP_AUTH_LOGIN'
+ss -ltnp | grep -E ':(80|8080|443|8443|7789|2290|5000|90)'
+
+Flujo:
+App puerto 80 -> bridge 7789 -> OpenSSH 2290 -> PAM AUTH LOGIN
 
 ============================================================
- 15) VER LOGS AUTH LOGIN
+ 12) REINICIAR SERVICIOS
+============================================================
+
+systemctl restart ssh
+systemctl restart svrcode-ssh-payload.service
+systemctl restart netvpn-auth-status-api.service
+
+============================================================
+ 13) LOGS
 ============================================================
 
 tail -f /var/log/netvpn-auth-login.log
@@ -170,59 +173,23 @@ journalctl -u netvpn-auth-status-api.service -f
 journalctl -u svrcode-ssh-payload.service -f
 
 ============================================================
- 16) CONFIG EN GEN / APP
-============================================================
-
-Puerto publico: 80
-Auth: api.tvchifladito.store
-Payload: el mismo de siempre
-
-FREE:
-La app genera en login SSH:
-user = nvp_<hash auth>
-pass = NVP1|free|AUTH|HWID|ssh
-
-VIP:
-La app genera en login SSH:
-user = nvp_<hash auth>
-pass = NVP1|vip|AUTH|TOKEN|HWID|ssh
-
-============================================================
- 17) CAMBIAR AUTH EN OTRA VPS
-============================================================
-
-Si otra VPS usa otro dominio AUTH:
-
-AUTH_MAIN="api.otra-vps.com" INSTALL_MODE=full bash instalar.sh
-
-Y en el GEN de ese servidor poner:
-Auth: api.otra-vps.com
-
-============================================================
- 18) REVERTIR NETVPN AUTH LOGIN
+ 14) REVERTIR AUTH LOGIN
 ============================================================
 
 bash /root/REVERT_NETVPN_AUTH_LOGIN.sh
 
 ============================================================
- 19) DESINSTALAR PROTOCOLOS ORIGINALES SVRCODE
+ 15) CONFIG EN GEN / APP
 ============================================================
 
-Si el instalador original dejó desinstalador:
+Puerto público: 80
+Auth: el mismo dominio que escribiste durante la instalación
+Payload: el mismo de siempre
 
-cd /root/svrcode-installer
-chmod +x desinstalar_svrcode.sh
-bash desinstalar_svrcode.sh
+FREE:
+user = nvp_<hash auth>
+pass = NVP1|free|AUTH|HWID|ssh
 
-O usar el archivo original dentro de este paquete:
-
-unzip svrcode-installerFULL_original.zip -d /root/svrcode-original
-find /root/svrcode-original -name desinstalar_svrcode.sh -exec chmod +x {} \; -exec bash {} \;
-
-============================================================
- 20) COMANDOS ORIGINALES
-============================================================
-
-Ver archivo:
-COMANDOS_ORIGINAL_SVRCODE.txt
-
+VIP:
+user = nvp_<hash auth>
+pass = NVP1|vip|AUTH|TOKEN|HWID|ssh
