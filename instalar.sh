@@ -1,37 +1,26 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-# NETVPN VIP MANAGER MENU V6
-# Mejora visual tipo SVRCODE original:
-# - Iconos/colores
-# - Estadisticas arriba: total, activos, vencidos, bloqueados, FREE, online
-# - Operaciones por numero de lista, no pide pegar token
-# - Opcion GEN / Metodos: intenta abrir menu/generador original si existe
-# - No toca protocolos, payload, bridge, ssh ni app
+TARGET="/usr/local/bin/netvpn-vip"
+CONF="/etc/netvpn-auth-login.conf"
+VIP_DB="/etc/netvpn-vip.tokens"
+LOG="/var/log/netvpn-auth-login.log"
 
-MANAGER="/usr/local/bin/netvpn-vip"
-BACKUP="/usr/local/bin/netvpn-vip.bak_menu_v6_$(date +%F_%H%M%S)"
+mkdir -p /etc
+[ -f "$TARGET" ] && cp -a "$TARGET" "$TARGET.bak_v7_simple_$(date +%F_%H%M%S)" || true
 
-if [ -f "$MANAGER" ]; then
-  cp -a "$MANAGER" "$BACKUP"
-fi
+touch "$VIP_DB" "$LOG"
+chmod 600 "$VIP_DB" "$LOG" 2>/dev/null || true
 
-cat > "$MANAGER" <<'SH'
+cat > "$TARGET" <<'SH'
 #!/usr/bin/env bash
-set -u
+set -e
 
 CONF="/etc/netvpn-auth-login.conf"
 VIP_DB="/etc/netvpn-vip.tokens"
 LOG="/var/log/netvpn-auth-login.log"
-API_SERVICE="netvpn-auth-status-api.service"
-PAYLOAD_SERVICE="svrcode-ssh-payload.service"
 
-# Colores
-R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'; M='\033[1;35m'; C='\033[1;36m'; W='\033[1;37m'; D='\033[2m'; N='\033[0m'
-
-line(){ echo -e "${G}════════════════════════════════════════════════════════════${N}"; }
-sep(){ echo -e "${C}────────────────────────────────────────────────────────────${N}"; }
-pause(){ echo; read -rp "Presiona ENTER para continuar..." _; }
+C0='\033[0m'; B='\033[1m'; R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; C='\033[1;36m'; M='\033[1;35m'; W='\033[1;37m'; GR='\033[0;32m'
 
 ensure_files(){
   mkdir -p /etc
@@ -45,287 +34,170 @@ VIP_DB=$VIP_DB
 LOG=$LOG
 CFG
   fi
-  grep -q '^VIP_DB=' "$CONF" 2>/dev/null || echo "VIP_DB=$VIP_DB" >> "$CONF"
-  grep -q '^LOG=' "$CONF" 2>/dev/null || echo "LOG=$LOG" >> "$CONF"
-  grep -q '^FREE_ENABLED=' "$CONF" 2>/dev/null || echo "FREE_ENABLED=1" >> "$CONF"
 }
 
 get_conf(){ grep -E "^$1=" "$CONF" 2>/dev/null | head -1 | cut -d= -f2-; }
-set_conf(){
-  local k="$1" v="$2"
-  ensure_files
-  if grep -q "^${k}=" "$CONF"; then
-    sed -i "s|^${k}=.*|${k}=${v}|" "$CONF"
-  else
-    echo "${k}=${v}" >> "$CONF"
-  fi
-}
+get_auth(){ get_conf AUTH_LIST; }
+get_free(){ v="$(get_conf FREE_ENABLED)"; [ -z "$v" ] && v=1; echo "$v"; }
+set_free(){ ensure_files; if grep -q '^FREE_ENABLED=' "$CONF"; then sed -i "s/^FREE_ENABLED=.*/FREE_ENABLED=$1/" "$CONF"; else echo "FREE_ENABLED=$1" >> "$CONF"; fi; }
 
-auth(){ get_conf AUTH_LIST | awk '{print $1}'; }
-free_enabled(){ get_conf FREE_ENABLED; }
+is_active(){ echo "$1" | grep -Eiq '^(1|true|active|activo|on|yes|si)$'; }
+today_epoch(){ date +%s; }
+date_epoch(){ date -d "$1" +%s 2>/dev/null || echo 0; }
+days_left(){ local e; e="$(date_epoch "$1")"; if [ "$e" = "0" ]; then echo -1; else echo $(( (e-$(today_epoch))/86400 )); fi; }
 
-normalize_date(){
-  local d="$1"
-  date -d "$d" +%F 2>/dev/null || echo "$d"
-}
+safe_lines(){ grep -v '^[[:space:]]*$' "$VIP_DB" 2>/dev/null | grep -v '^#' || true; }
+count_total(){ safe_lines | wc -l | tr -d ' '; }
+count_active(){ safe_lines | awk -F'|' 'tolower($4) ~ /^(active|activo|1|on|true)$/ {print}' | wc -l | tr -d ' '; }
+count_block(){ safe_lines | awk -F'|' 'tolower($4) ~ /(block|bloq|off|0|false|inactive)/ {print}' | wc -l | tr -d ' '; }
+count_nohwid(){ safe_lines | awk -F'|' '($3=="" || $3=="*") {print}' | wc -l | tr -d ' '; }
+count_expired(){ safe_lines | while IFS='|' read -r token exp hwid st name rest; do d="$(days_left "$exp")"; [ "$d" -lt 0 ] && echo x; done | wc -l | tr -d ' '; }
+online_count(){ ss -tn state established '( sport = :2290 or sport = :90 or sport = :80 )' 2>/dev/null | tail -n +2 | wc -l | tr -d ' '; }
 
-days_left(){
-  local exp="$1"
-  local now exp_s
-  now=$(date +%s)
-  exp_s=$(date -d "$exp" +%s 2>/dev/null || echo 0)
-  if [ "$exp_s" -eq 0 ]; then echo -999; return; fi
-  echo $(( (exp_s - now) / 86400 ))
-}
+pause(){ echo; read -rp "ENTER para continuar..." _; }
 
-state_color(){
-  local st="${1,,}" exp="$2" days
-  days=$(days_left "$exp")
-  if [[ "$st" =~ ^(blocked|block|bloqueado|inactive|off|0)$ ]]; then echo -e "${R}${st}${N}"; return; fi
-  if [ "$days" -lt 0 ]; then echo -e "${R}vencido${N}"; return; fi
-  if [[ "$st" =~ ^(active|activo|on|1|true)$ ]]; then echo -e "${G}activo${N}"; return; fi
-  echo -e "${Y}${st}${N}"
-}
-
-free_color(){
-  local f="$(free_enabled)"
-  if [[ "${f,,}" =~ ^(1|true|active|activo|on|yes|si)$ ]]; then echo -e "${G}ON${N}"; else echo -e "${R}OFF${N}"; fi
-}
-
-token_stats(){
-  local total=0 active=0 expired=0 blocked=0 unbound=0
-  local t exp hwid st cli d
-  while IFS='|' read -r t exp hwid st cli rest; do
-    [ -z "${t:-}" ] && continue
-    [[ "$t" =~ ^# ]] && continue
-    total=$((total+1))
-    d=$(days_left "$exp")
-    if [[ "${st,,}" =~ ^(blocked|block|bloqueado|inactive|off|0)$ ]]; then blocked=$((blocked+1));
-    elif [ "$d" -lt 0 ]; then expired=$((expired+1));
-    else active=$((active+1)); fi
-    if [ -z "${hwid:-}" ]; then unbound=$((unbound+1)); fi
-  done < "$VIP_DB"
-  echo "$total|$active|$expired|$blocked|$unbound"
-}
-
-online_count(){
-  # Cuenta aproximada de sesiones del usuario tecnico nvp_<auth>.
-  local a u
-  a="$(auth)"
-  [ -z "$a" ] && { echo 0; return; }
-  u="$(python3 - <<PY 2>/dev/null
-import hashlib
-print('nvp_' + hashlib.sha256('$a'.encode()).hexdigest()[:12])
-PY
-)"
-  pgrep -u "$u" 2>/dev/null | wc -l | tr -d ' '
-}
-
-header(){
+print_header(){
   clear
-  ensure_files
-  local stats total active expired blocked unbound online
-  IFS='|' read -r total active expired blocked unbound <<<"$(token_stats)"
-  online="$(online_count)"
-  line
-  echo -e "${W}        🔐 NETVPN AUTH LOGIN - TOKEN MANAGER V6${N}"
-  line
-  echo -e "🌐 AUTH : ${C}$(auth)${N}"
-  echo -e "🟢 FREE : $(free_color)       👥 Online: ${Y}${online}${N}"
-  echo -e "🎫 Tokens: ${W}${total}${N}   ✅ Activos: ${G}${active}${N}   ⛔ Bloq: ${R}${blocked}${N}   ⏳ Vencidos: ${R}${expired}${N}   📱 Sin HWID: ${Y}${unbound}${N}"
-  line
+  echo -e "${G}============================================================${C0}"
+  echo -e "      🔐 ${W}NETVPN AUTH LOGIN - MANAGER V7${C0}"
+  echo -e "${G}============================================================${C0}"
+  echo -e "🌐 AUTH : ${C}$(get_auth)${C0}"
+  if [ "$(get_free)" = "1" ]; then f="${G}ON${C0}"; else f="${R}OFF${C0}"; fi
+  echo -e "🟢 FREE : $f     👥 Online: ${C}$(online_count)${C0}"
+  echo -e "🎫 Tokens: ${Y}$(count_total)${C0}   ✅ Activos: ${G}$(count_active)${C0}   ⛔ Bloq: ${R}$(count_block)${C0}   ⌛ Vencidos: ${R}$(count_expired)${C0}   📱 Sin HWID: ${Y}$(count_nohwid)${C0}"
+  echo -e "${G}============================================================${C0}"
 }
 
-list_tokens(){
-  ensure_files
-  header
-  echo -e "${W}📋 LISTA DE TOKENS VIP${N}"
-  sep
-  printf "${C}%-4s %-18s %-18s %-12s %-8s %-10s %-16s${N}\n" "N°" "TOKEN" "CLIENTE" "VENCE" "DÍAS" "ESTADO" "HWID"
-  sep
-  local n=0 t exp hwid st cli rest d state hwshow
-  while IFS='|' read -r t exp hwid st cli rest; do
-    [ -z "${t:-}" ] && continue
-    [[ "$t" =~ ^# ]] && continue
-    n=$((n+1))
-    cli="${cli:-Cliente VIP}"
-    d=$(days_left "$exp")
-    state=$(state_color "${st:-active}" "$exp")
-    if [ -z "${hwid:-}" ]; then hwshow="${Y}primer uso${N}"; elif [ "$hwid" = "*" ]; then hwshow="${Y}libre(*)${N}"; else hwshow="${G}${hwid:0:14}${N}"; fi
-    if [ "$d" -lt 0 ]; then d="${R}${d}${N}"; else d="${G}${d}${N}"; fi
-    printf "%-4s ${Y}%-18s${N} %-18s %-12s %-17b %-18b %-16b\n" "$n" "$t" "$cli" "$exp" "$d" "$state" "$hwshow"
-  done < "$VIP_DB"
-  if [ "$n" -eq 0 ]; then echo -e "${Y}Sin tokens todavía.${N}"; fi
-  sep
+status_color(){
+  local st="$1" exp="$2" d
+  d="$(days_left "$exp")"
+  if [ "$d" -lt 0 ]; then echo -e "${R}VENCIDO${C0}"; return; fi
+  if is_active "$st"; then echo -e "${G}ACTIVO${C0}"; else echo -e "${R}BLOQUEADO${C0}"; fi
 }
 
-get_token_by_num(){
-  local num="$1" n=0 t exp hwid st cli rest
-  while IFS='|' read -r t exp hwid st cli rest; do
-    [ -z "${t:-}" ] && continue
-    [[ "$t" =~ ^# ]] && continue
-    n=$((n+1))
-    if [ "$n" = "$num" ]; then echo "$t"; return 0; fi
-  done < "$VIP_DB"
+print_tokens(){
+  ensure_files
+  echo -e "${G}--------------------------------------------------------------------------------${C0}"
+  printf "%b\n" "${W} #   TOKEN              CLIENTE             VENCE       DIAS   ESTADO       HWID${C0}"
+  echo -e "${G}--------------------------------------------------------------------------------${C0}"
+  local i=0 any=0
+  while IFS='|' read -r token exp hwid st name rest; do
+    [ -z "$token" ] && continue
+    any=1; i=$((i+1))
+    [ -z "$name" ] && name="Cliente VIP"
+    [ -z "$hwid" ] && hwid="SIN-HWID"
+    d="$(days_left "$exp")"
+    estado="$(status_color "$st" "$exp")"
+    if [ "$hwid" = "*" ] || [ "$hwid" = "SIN-HWID" ]; then hwid_show="${Y}${hwid}${C0}"; else hwid_show="${C}${hwid:0:12}...${C0}"; fi
+    if [ "$d" -lt 0 ]; then dshow="${R}${d}${C0}"; else dshow="${G}${d}${C0}"; fi
+    printf "%b" "${Y}[$i]${C0} "
+    printf "%-18s %-19s %-10s " "$token" "${name:0:19}" "$exp"
+    printf "%b " "$dshow"
+    printf "%b " "$estado"
+    printf "%b\n" "$hwid_show"
+  done < <(safe_lines)
+  [ "$any" = "0" ] && echo -e "${Y}Sin tokens VIP todavía.${C0}"
+  echo -e "${G}--------------------------------------------------------------------------------${C0}"
+}
+
+token_by_num(){
+  local n="$1" i=0 token
+  while IFS='|' read -r token exp hwid st name rest; do
+    [ -z "$token" ] && continue
+    i=$((i+1))
+    if [ "$i" = "$n" ]; then echo "$token"; return 0; fi
+  done < <(safe_lines)
   return 1
 }
 
-require_num_token(){
-  list_tokens
-  local num token
+choose_token(){
+  print_tokens
   echo
-  read -rp "Elige número de token: " num
-  token="$(get_token_by_num "$num" || true)"
-  if [ -z "$token" ]; then echo -e "${R}Número inválido.${N}"; pause; return 1; fi
-  echo "$token"
+  read -rp "Elige número: " n
+  token_by_num "$n"
 }
 
-add_token(){
-  ensure_files
-  header
-  echo -e "${W}➕ CREAR / RENOVAR TOKEN VIP${N}"
-  sep
-  local token days cli hwid exp
-  read -rp "Token: " token
-  [ -z "$token" ] && { echo -e "${R}Token vacío.${N}"; pause; return; }
-  read -rp "Días [30]: " days
-  [ -z "$days" ] && days=30
-  read -rp "Cliente: " cli
-  [ -z "$cli" ] && cli="Cliente VIP"
-  read -rp "HWID opcional (ENTER = primer uso): " hwid
-  exp="$(date -d "+${days} days" +%F)"
-  grep -v "^${token}|" "$VIP_DB" > /tmp/netvpn-vip.tokens 2>/dev/null || true
-  mv /tmp/netvpn-vip.tokens "$VIP_DB"
-  echo "${token}|${exp}|${hwid}|active|${cli}" >> "$VIP_DB"
-  chmod 600 "$VIP_DB" 2>/dev/null || true
-  echo -e "${G}OK token guardado.${N}"
-  echo -e "Token: ${Y}$token${N}  Cliente: ${C}$cli${N}  Vence: ${G}$exp${N}"
-  [ -z "$hwid" ] && echo -e "HWID: ${Y}se vinculará al primer uso${N}" || echo -e "HWID: ${G}$hwid${N}"
-  pause
-}
-
-update_token_field(){
+rewrite_token_field(){
   local token="$1" field="$2" value="$3"
   awk -F'|' -v T="$token" -v F="$field" -v V="$value" 'BEGIN{OFS="|"} $1==T{$F=V} {print}' "$VIP_DB" > /tmp/netvpn-vip.tokens
   mv /tmp/netvpn-vip.tokens "$VIP_DB"
   chmod 600 "$VIP_DB" 2>/dev/null || true
 }
 
-block_token(){ local token; token="$(require_num_token)" || return; update_token_field "$token" 4 "blocked"; echo -e "${R}Bloqueado:${N} $token"; pause; }
-active_token(){ local token; token="$(require_num_token)" || return; update_token_field "$token" 4 "active"; echo -e "${G}Activo:${N} $token"; pause; }
-del_token(){ local token; token="$(require_num_token)" || return; grep -v "^${token}|" "$VIP_DB" > /tmp/netvpn-vip.tokens || true; mv /tmp/netvpn-vip.tokens "$VIP_DB"; echo -e "${R}Eliminado:${N} $token"; pause; }
-renew_token(){
-  local token days exp
-  token="$(require_num_token)" || return
-  read -rp "Agregar/renovar por cuántos días: " days
+add_token(){
+  ensure_files
+  echo -e "${C}Crear / renovar VIP${C0}"
+  read -rp "Token: " token
+  read -rp "Días: " days
+  read -rp "Cliente: " name
   [ -z "$days" ] && days=30
+  [ -z "$name" ] && name="Cliente VIP"
+  [ -z "$token" ] && { echo -e "${R}Token vacío.${C0}"; pause; return; }
   exp="$(date -d "+${days} days" +%F)"
-  update_token_field "$token" 2 "$exp"
-  update_token_field "$token" 4 "active"
-  echo -e "${G}Renovado:${N} $token vence $exp"
+  grep -v "^${token}|" "$VIP_DB" > /tmp/netvpn-vip.tokens 2>/dev/null || true
+  mv /tmp/netvpn-vip.tokens "$VIP_DB"
+  echo "${token}|${exp}||active|${name}" >> "$VIP_DB"
+  chmod 600 "$VIP_DB" 2>/dev/null || true
+  echo -e "${G}OK creado: $token vence $exp. HWID: primer uso.${C0}"
   pause
 }
-rename_token(){ local token cli; token="$(require_num_token)" || return; read -rp "Nuevo nombre cliente: " cli; [ -z "$cli" ] && return; update_token_field "$token" 5 "$cli"; echo -e "${G}Nombre actualizado.${N}"; pause; }
-bind_hwid(){ local token hwid; token="$(require_num_token)" || return; read -rp "HWID real: " hwid; [ -z "$hwid" ] && { echo "HWID vacío"; pause; return; }; update_token_field "$token" 3 "$hwid"; echo -e "${G}HWID vinculado.${N}"; pause; }
-reset_hwid(){ local token; token="$(require_num_token)" || return; update_token_field "$token" 3 ""; echo -e "${Y}HWID reseteado. Se vinculará al primer uso.${N}"; pause; }
 
-free_on(){ set_conf FREE_ENABLED 1; echo -e "${G}FREE encendido.${N}"; pause; }
-free_off(){ set_conf FREE_ENABLED 0; echo -e "${R}FREE apagado.${N}"; pause; }
+block_token(){ token="$(choose_token || true)"; [ -n "$token" ] && { rewrite_token_field "$token" 4 "blocked"; echo -e "${G}OK bloqueado.${C0}"; }; pause; }
+active_token(){ token="$(choose_token || true)"; [ -n "$token" ] && { rewrite_token_field "$token" 4 "active"; echo -e "${G}OK activo.${C0}"; }; pause; }
+del_token(){ token="$(choose_token || true)"; [ -n "$token" ] && { grep -v "^${token}|" "$VIP_DB" > /tmp/netvpn-vip.tokens || true; mv /tmp/netvpn-vip.tokens "$VIP_DB"; echo -e "${G}OK eliminado.${C0}"; }; pause; }
+renew_token(){ token="$(choose_token || true)"; [ -z "$token" ] && { pause; return; }; read -rp "Días nuevos: " d; [ -z "$d" ] && d=30; exp="$(date -d "+${d} days" +%F)"; rewrite_token_field "$token" 2 "$exp"; rewrite_token_field "$token" 4 "active"; echo -e "${G}OK renovado hasta $exp.${C0}"; pause; }
+rename_token(){ token="$(choose_token || true)"; [ -z "$token" ] && { pause; return; }; read -rp "Nuevo cliente: " name; [ -z "$name" ] && name="Cliente VIP"; rewrite_token_field "$token" 5 "$name"; echo -e "${G}OK nombre cambiado.${C0}"; pause; }
+bind_hwid(){ token="$(choose_token || true)"; [ -z "$token" ] && { pause; return; }; read -rp "HWID: " hw; rewrite_token_field "$token" 3 "$hw"; echo -e "${G}OK HWID vinculado.${C0}"; pause; }
+reset_hwid(){ token="$(choose_token || true)"; [ -z "$token" ] && { pause; return; }; rewrite_token_field "$token" 3 ""; echo -e "${G}OK HWID reseteado. Se vinculará al primer uso.${C0}"; pause; }
 
 status_api(){
-  header
-  echo -e "${W}🩺 ESTADO API / SERVICIOS${N}"
-  sep
-  echo -e "${C}Config:${N}"; cat "$CONF" 2>/dev/null || true
+  echo -e "${C}API 5000:${C0}"
+  curl -s http://127.0.0.1:5000/health || true
   echo
-  echo -e "${C}Puerto 5000:${N}"; ss -ltnp 2>/dev/null | grep ':5000' || echo "5000 no escucha"
+  echo -e "${C}FREE:${C0}"
+  curl -s 'http://127.0.0.1:5000/checkUser?mode=free' || true
   echo
-  echo -e "${C}Health:${N}"; curl -s http://127.0.0.1:5000/health 2>/dev/null || echo "sin respuesta"
-  echo
-  echo -e "${C}Servicios:${N}"
-  systemctl is-active --quiet "$API_SERVICE" && echo -e "API 5000: ${G}active${N}" || echo -e "API 5000: ${R}inactive${N}"
-  systemctl is-active --quiet "$PAYLOAD_SERVICE" && echo -e "Bridge: ${G}active${N}" || echo -e "Bridge: ${R}inactive${N}"
+  echo -e "${C}Servicios:${C0}"
+  systemctl is-active netvpn-auth-status-api.service 2>/dev/null || true
+  systemctl is-active svrcode-ssh-payload.service 2>/dev/null || true
   pause
 }
 
-logs(){
-  header
-  echo -e "${W}📜 ÚLTIMOS LOGS AUTH${N}"
-  sep
-  tail -80 "$LOG" 2>/dev/null || echo "Sin log"
-  pause
-}
-
+show_logs(){ tail -80 "$LOG" 2>/dev/null || echo "Sin log"; pause; }
 open_gen(){
-  header
-  echo -e "${W}⚙️ GEN / MÉTODOS ORIGINAL${N}"
-  sep
-  echo "Buscando generador/menu original..."
-  echo
-
-  # Rutas/comandos comunes, sin borrar nada.
-  local candidates=()
-  command -v svrcode >/dev/null 2>&1 && candidates+=("$(command -v svrcode)")
-  command -v menu >/dev/null 2>&1 && candidates+=("$(command -v menu)")
-  command -v gen >/dev/null 2>&1 && candidates+=("$(command -v gen)")
-  [ -f /opt/svrcode/neon_dashboard.py ] && candidates+=("python3 /opt/svrcode/neon_dashboard.py")
-  [ -f /opt/svrcode/gen.py ] && candidates+=("python3 /opt/svrcode/gen.py")
-  [ -f /root/gerador.sh ] && candidates+=("bash /root/gerador.sh")
-  [ -f /root/generator.sh ] && candidates+=("bash /root/generator.sh")
-
-  if [ "${#candidates[@]}" -eq 0 ]; then
-    echo -e "${Y}No encontré comando GEN automático.${N}"
-    echo "Archivos parecidos:"
-    find /opt /root -maxdepth 4 \( -iname '*gen*' -o -iname '*metod*' -o -iname '*method*' -o -iname '*dashboard*' \) 2>/dev/null | head -30
-    pause
-    return
-  fi
-
-  local i=1
-  for c in "${candidates[@]}"; do
-    echo "[$i] $c"
-    i=$((i+1))
-  done
-  echo "[0] Volver"
-  echo
-  local op cmd
-  read -rp "Elige GEN/Métodos: " op
-  [ "$op" = "0" ] && return
-  if ! [[ "$op" =~ ^[0-9]+$ ]] || [ "$op" -lt 1 ] || [ "$op" -gt "${#candidates[@]}" ]; then
-    echo "Opción inválida"; pause; return
-  fi
-  cmd="${candidates[$((op-1))]}"
-  echo -e "${G}Abriendo:${N} $cmd"
-  sleep 1
-  eval "$cmd"
+  if command -v gen >/dev/null 2>&1; then gen; return; fi
+  if command -v svrcode >/dev/null 2>&1; then svrcode; return; fi
+  if [ -x /opt/svrcode/menu.sh ]; then bash /opt/svrcode/menu.sh; return; fi
+  echo -e "${Y}No encontré comando GEN original. Abre el menú original de protocolos.${C0}"
+  pause
 }
 
 menu(){
   ensure_files
   while true; do
-    header
-    echo -e "${W}📌 MENÚ PRINCIPAL${N}"
-    sep
-    echo -e " ${G}[1]${N}  ➕ Crear/Renovar token VIP"
-    echo -e " ${G}[2]${N}  📋 Listar tokens con colores"
-    echo -e " ${G}[3]${N}  ⛔ Bloquear token por número"
-    echo -e " ${G}[4]${N}  ✅ Activar token por número"
-    echo -e " ${G}[5]${N}  🗑️  Eliminar token por número"
-    echo -e " ${G}[6]${N}  🔄 Renovar token por número"
-    echo -e " ${G}[7]${N}  ✏️  Cambiar nombre cliente por número"
-    echo -e " ${G}[8]${N}  📱 Vincular token a HWID"
-    echo -e " ${G}[9]${N}  ♻️  Resetear HWID para primer uso"
-    echo -e "${Y}[10]${N}  🔴 Apagar FREE"
-    echo -e "${Y}[11]${N}  🟢 Encender FREE"
-    echo -e "${C}[12]${N}  🩺 Estado API / servicios"
-    echo -e "${C}[13]${N}  ⚙️  GEN / Métodos original"
-    echo -e "${C}[14]${N}  📜 Ver logs AUTH"
-    echo -e " ${R}[0]${N}  🚪 Salir"
-    sep
+    print_header
+    echo -e "${M}📌 MENÚ PRINCIPAL${C0}"
+    echo -e "${G}------------------------------------------------------------${C0}"
+    echo -e "${Y}[1]${C0}  ➕ Crear / renovar VIP"
+    echo -e "${Y}[2]${C0}  📋 Listar"
+    echo -e "${Y}[3]${C0}  ⛔ Bloquear"
+    echo -e "${Y}[4]${C0}  ✅ Activar"
+    echo -e "${Y}[5]${C0}  🗑️  Eliminar"
+    echo -e "${Y}[6]${C0}  🔄 Renovar"
+    echo -e "${Y}[7]${C0}  ✏️  Cambiar nombre"
+    echo -e "${Y}[8]${C0}  📱 Vincular HWID"
+    echo -e "${Y}[9]${C0}  ♻️  Resetear HWID"
+    echo -e "${Y}[10]${C0} 🔴 Apagar FREE"
+    echo -e "${Y}[11]${C0} 🟢 Encender FREE"
+    echo -e "${Y}[12]${C0} 🛠️  Estado API"
+    echo -e "${Y}[13]${C0} ⚙️  GEN / Métodos"
+    echo -e "${Y}[14]${C0} 📜 Logs AUTH"
+    echo -e "${Y}[0]${C0}  🚪 Salir"
+    echo -e "${G}------------------------------------------------------------${C0}"
     read -rp "Elige opción: " op
     case "$op" in
       1) add_token ;;
-      2) list_tokens; pause ;;
+      2) print_tokens; pause ;;
       3) block_token ;;
       4) active_token ;;
       5) del_token ;;
@@ -333,13 +205,13 @@ menu(){
       7) rename_token ;;
       8) bind_hwid ;;
       9) reset_hwid ;;
-      10) free_off ;;
-      11) free_on ;;
+      10) set_free 0; echo -e "${G}FREE apagado.${C0}"; pause ;;
+      11) set_free 1; echo -e "${G}FREE encendido.${C0}"; pause ;;
       12) status_api ;;
       13) open_gen ;;
-      14) logs ;;
+      14) show_logs ;;
       0) exit 0 ;;
-      *) echo -e "${R}Opción inválida.${N}"; sleep 1 ;;
+      *) echo -e "${R}Opción inválida.${C0}"; sleep 1 ;;
     esac
   done
 }
@@ -348,40 +220,36 @@ ensure_files
 cmd="${1:-menu}"; shift || true
 case "$cmd" in
   menu) menu ;;
-  add) add_token "$@" ;;
-  list) list_tokens ;;
-  block) block_token ;;
-  active) active_token ;;
-  del|delete|rm) del_token ;;
-  renew) renew_token ;;
-  bind) bind_hwid ;;
-  reset-hwid) reset_hwid ;;
-  free-on) set_conf FREE_ENABLED 1; echo "FREE encendido" ;;
-  free-off) set_conf FREE_ENABLED 0; echo "FREE apagado" ;;
+  list) print_tokens ;;
+  add) token="$1"; days="${2:-30}"; name="${3:-Cliente VIP}"; exp="$(date -d "+${days} days" +%F)"; grep -v "^${token}|" "$VIP_DB" > /tmp/netvpn-vip.tokens 2>/dev/null || true; mv /tmp/netvpn-vip.tokens "$VIP_DB"; echo "${token}|${exp}||active|${name}" >> "$VIP_DB"; echo "OK $token $exp" ;;
+  free-on) set_free 1; echo "FREE ON" ;;
+  free-off) set_free 0; echo "FREE OFF" ;;
   status) status_api ;;
-  gen|gin) open_gen ;;
-  *) echo "Uso: netvpn-vip menu|add|list|block|active|del|renew|bind|reset-hwid|free-on|free-off|status|gen"; exit 1 ;;
+  gen) open_gen ;;
+  *) echo "Uso: netvpn-vip menu|list|add|free-on|free-off|status|gen" ;;
 esac
 SH
 
-chmod +x "$MANAGER"
+chmod +x "$TARGET"
 
-# svrtoken redirige al nuevo menú bonito
-cat > /usr/local/bin/svrtoken <<'SH'
+# svrtoken abre el gestor correcto
+cat >/usr/local/bin/svrtoken <<'SH'
 #!/usr/bin/env bash
 exec /usr/local/bin/netvpn-vip menu
 SH
 chmod +x /usr/local/bin/svrtoken
 
-# Alias opcional para escribir gin/gen y abrir la opcion de metodos
-cat > /usr/local/bin/netvpn-gen <<'SH'
+# comando corto para gen si no existe
+if [ ! -x /usr/local/bin/netvpn-gen ]; then
+cat >/usr/local/bin/netvpn-gen <<'SH'
 #!/usr/bin/env bash
-exec /usr/local/bin/netvpn-vip gen
+if command -v gen >/dev/null 2>&1; then exec gen; fi
+if command -v svrcode >/dev/null 2>&1; then exec svrcode; fi
+if [ -x /opt/svrcode/menu.sh ]; then exec bash /opt/svrcode/menu.sh; fi
+echo "No encontré el menú original GEN / métodos."
 SH
 chmod +x /usr/local/bin/netvpn-gen
+fi
 
-echo "=== LISTO ==="
-echo "Backup anterior: $BACKUP"
-echo "Abrir menú nuevo: netvpn-vip menu"
-echo "También: svrtoken"
-echo "GEN/Métodos: netvpn-vip gen  o  netvpn-gen"
+echo "OK: netvpn-vip V7 simple instalado."
+echo "Abrir: netvpn-vip menu"
