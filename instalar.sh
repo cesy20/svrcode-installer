@@ -10,6 +10,7 @@ mkdir -p /etc
 [ -f "$TARGET" ] && cp -a "$TARGET" "$TARGET.bak_v7_simple_$(date +%F_%H%M%S)" || true
 
 touch "$VIP_DB" "$LOG"
+perl -pi -e 's/\x00//g' "$VIP_DB" 2>/dev/null || true
 chmod 600 "$VIP_DB" "$LOG" 2>/dev/null || true
 
 cat > "$TARGET" <<'SH'
@@ -46,7 +47,7 @@ today_epoch(){ date +%s; }
 date_epoch(){ date -d "$1" +%s 2>/dev/null || echo 0; }
 days_left(){ local e; e="$(date_epoch "$1")"; if [ "$e" = "0" ]; then echo -1; else echo $(( (e-$(today_epoch))/86400 )); fi; }
 
-safe_lines(){ grep -v '^[[:space:]]*$' "$VIP_DB" 2>/dev/null | grep -v '^#' || true; }
+safe_lines(){ tr -d '\000' < "$VIP_DB" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^#' || true; }
 count_total(){ safe_lines | wc -l | tr -d ' '; }
 count_active(){ safe_lines | awk -F'|' 'tolower($4) ~ /^(active|activo|1|on|true)$/ {print}' | wc -l | tr -d ' '; }
 count_block(){ safe_lines | awk -F'|' 'tolower($4) ~ /(block|bloq|off|0|false|inactive)/ {print}' | wc -l | tr -d ' '; }
@@ -59,7 +60,7 @@ pause(){ echo; read -rp "ENTER para continuar..." _; }
 print_header(){
   clear
   echo -e "${G}============================================================${C0}"
-  echo -e "      🔐 ${W}NETVPN AUTH LOGIN - MANAGER V7${C0}"
+  echo -e "      🔐 ${W}NETVPN AUTH LOGIN - MANAGER V7B${C0}"
   echo -e "${G}============================================================${C0}"
   echo -e "🌐 AUTH : ${C}$(get_auth)${C0}"
   if [ "$(get_free)" = "1" ]; then f="${G}ON${C0}"; else f="${R}OFF${C0}"; fi
@@ -111,9 +112,13 @@ token_by_num(){
 }
 
 choose_token(){
-  print_tokens
-  echo
-  read -rp "Elige número: " n
+  # IMPORTANTE: esta función se usa dentro de token="$(choose_token)".
+  # Por eso la tabla y el prompt deben ir a /dev/tty; si van a stdout,
+  # bash los captura y no se muestran en pantalla.
+  print_tokens > /dev/tty
+  echo > /dev/tty
+  printf "Elige número: " > /dev/tty
+  read -r n < /dev/tty
   token_by_num "$n"
 }
 
@@ -251,5 +256,5 @@ SH
 chmod +x /usr/local/bin/netvpn-gen
 fi
 
-echo "OK: netvpn-vip V7 simple instalado."
+echo "OK: netvpn-vip V7B instalado. Lista visible en activar/bloquear/eliminar."
 echo "Abrir: netvpn-vip menu"
